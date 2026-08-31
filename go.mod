@@ -1,3 +1,3 @@
-module ringbuffer
+module github.com/Love-Pengy/ringbuffer
  
 go 1.25
