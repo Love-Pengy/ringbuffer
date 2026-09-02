@@ -156,6 +156,21 @@ func (r *RingBuffer[T, C]) TrimLessThan(cutoff C) {
 	}
 }
 
+// Gets elements from the tail whose comparison value is less than the cutoff.
+// Element comparison stops when an element passes cutoff check
+func (r *RingBuffer[T, C]) GetLessThan(cutoff C) ([]T) {
+	r.ringLock.Lock()
+	defer r.ringLock.Unlock()
+
+	out := make([]T, 0)
+	for (r.count > 0) && (cmp.Less(r.buf[r.tail].GetCmpValue(), cutoff)) {
+		out = append(out, r.buf[r.tail])
+		r.tail = r.next(r.tail)
+		r.count--
+	}
+	return out
+}
+
 // Destroys elements from the tail whose comparison value is more than the cutoff.
 // Element comparison stops when an element passes cutoff check
 func (r *RingBuffer[T, C]) TrimMoreThan(cutoff C) {
