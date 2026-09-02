@@ -168,6 +168,11 @@ func (r *RingBuffer[T, C]) GetLessThan(cutoff C) ([]T) {
 		r.tail = r.next(r.tail)
 		r.count--
 	}
+	
+	if len(out) == 0 {
+		return nil
+	}
+
 	return out
 }
 
