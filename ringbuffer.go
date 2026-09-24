@@ -202,14 +202,20 @@ func (r *RingBuffer[T, C]) Reset() {
 //			  through how to prevent overwriting while the consumer is eating the this snapshot
 //			  window
 // Returns a newly allocated slice containing a copy of all elements ordered from tail to head.
+// If no elements are availbale it will return nil
 func (r *RingBuffer[T, C]) Snapshot() []T {
 	r.ringLock.RLock()
 	defer r.ringLock.RUnlock()
 
-	out := make([]T, r.count)
+	out := make([]T, 0, r.count)
 	for i := 0; i < r.count; i++ {
-		out[i] = r.buf[(r.tail+i)%len(r.buf)]
+		out = append(out, r.buf[(r.tail+i)%len(r.buf)])
 	}
+	
+	if len(out) == 0 {
+		return nil
+	}
+
 	return out
 }
 
