@@ -114,6 +114,24 @@ func (r *RingBuffer[T, C]) Push(v T) (evicted T, didEvict bool) {
 	return evicted, didEvict
 }
 
+
+// Pop item from ring buffer
+// Should the buffer be empty this will return the zero value of the type
+func (r *RingBuffer[T, C]) Pop() (T, error) {
+	r.ringLock.RLock()
+	defer r.ringLock.RUnlock()
+
+	if r.count == 0 {
+		var nullValue T
+		return nullValue, errors.New("Ring buffer is empty")
+	}
+	
+	output := r.buf[r.tail]
+	r.tail++
+	r.count--
+	return output, nil
+}
+
 // Should the buffer not be empty Returns the element at the tail and true, or the zero value and
 // false if the buffer is empty.
 // This is all done without moving the tail

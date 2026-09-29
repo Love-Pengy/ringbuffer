@@ -123,6 +123,26 @@ func TestPushWithinBounds(t *testing.T) {
 	}
 }
 
+func TestPopWithinBounds(t *testing.T) {
+	ring := must(New[frame, int64](3))
+	for i := range 3 {
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+
+	for i := range 3 {
+		value, err := ring.Pop()
+		if err != nil {
+			t.Fatalf("Pop failed #%d with %e", i, err)
+		} else if value.val != i {
+			t.Fatalf("Pop #%d failed got %d expected %d", i, value.val, i)
+		}
+	}
+
+	if length := ring.Len(); length != 0 {
+		t.Fatalf("Len = %d expected 0", length)
+	}
+}
+
 func TestLandlord(t *testing.T) {
 	ring := must(New[frame, int64](3))
 	ring.Push(makeFrame(0, 0))
@@ -459,7 +479,8 @@ func TestMultiThreadNoRace(t *testing.T) {
 				ring.TrimLessThan(time.Now().Add(-time.Hour).UnixNano())
 				time.Sleep(time.Microsecond)
 			}
-		})
+		},
+	)
 
 	pushDone := make(chan struct{})
 	go func() {
@@ -511,7 +532,8 @@ func TestConcurrentResetDuringPush(t *testing.T) {
 					i++
 				}
 			}
-		})
+		},
+	)
 
 	wg.Go(func() {
 		for range 500 {
