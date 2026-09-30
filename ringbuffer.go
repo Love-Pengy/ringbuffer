@@ -42,7 +42,7 @@ import (
 	"sync"
 )
 
-// Constaint to require an interface to obtain our comparison value as well as require a type that
+// Constant to require an interface to obtain our comparison value as well as require a type that
 // can be compared in the first place
 type Comparable[C cmp.Ordered] interface {
 	GetCmpValue() C
@@ -55,6 +55,8 @@ type RingBuffer[T Comparable[C], C cmp.Ordered] struct {
 	count    int
 	ringLock sync.RWMutex
 }
+
+var emptyError = errors.New("Ring buffer is empty")
 
 // Create new ring buffer with capacity blocks.
 // Returns an error if capacity is an invalid size
@@ -122,7 +124,7 @@ func (r *RingBuffer[T, C]) Pop() (T, error) {
 
 	if r.count == 0 {
 		var nullValue T
-		return nullValue, errors.New("Ring buffer is empty")
+		return nullValue, emptyError
 	}
 
 	output := r.buf[r.tail]
@@ -146,7 +148,7 @@ func (r *RingBuffer[T, C]) Oldest() (T, bool) {
 	return r.buf[r.tail], true
 }
 
-// Should the buffer not be empty returns the element at the head and true, or the zero value and
+// Should the buffer not be empty returns the element at head-1 and true, or the zero value and
 // false if the buffer is empty
 // This is all done without moving the head
 func (r *RingBuffer[T, C]) Newest() (T, bool) {
@@ -234,11 +236,11 @@ func (r *RingBuffer[T, C]) Reset() {
 
 // TODO(BEF): This really shouldn't be the way to do this (expensive obv), but I'm still thinking
 //
-//	through how to prevent overwriting while the consumer is eating the this snapshot
+//	through how to prevent overwriting while the consumer is eating the snapshot
 //	window
 //
 // Returns a newly allocated slice containing a copy of all elements ordered from tail to head.
-// If no elements are availbale it will return nil
+// If no elements are available it will return nil
 func (r *RingBuffer[T, C]) Snapshot() []T {
 	r.ringLock.RLock()
 	defer r.ringLock.RUnlock()
@@ -257,7 +259,7 @@ func (r *RingBuffer[T, C]) Snapshot() []T {
 
 // Calls fn for every element from tail to head Stops at the point at which fn returns false.
 //
-// NOTE(BEF): There is a possibility that calling the fingbuffer functions within this function
+// NOTE(BEF): There is a possibility that calling the ringbuffer functions within this function
 //
 //	will cause a deadlock. Instead do what you need within the function and do your
 //	ringbuffer operations afterwards
