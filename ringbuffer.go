@@ -127,7 +127,7 @@ func (r *RingBuffer[T, C]) Pop() (T, error) {
 	}
 	
 	output := r.buf[r.tail]
-	r.tail++
+	r.tail = r.next(r.tail)
 	r.count--
 	return output, nil
 }

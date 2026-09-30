@@ -132,7 +132,7 @@ func TestPopWithinBounds(t *testing.T) {
 	for i := range 3 {
 		value, err := ring.Pop()
 		if err != nil {
-			t.Fatalf("Pop failed #%d with %e", i, err)
+			t.Fatalf("Pop failed #%d with %v", i, err)
 		} else if value.val != i {
 			t.Fatalf("Pop #%d failed got %d expected %d", i, value.val, i)
 		}
@@ -142,6 +142,26 @@ func TestPopWithinBounds(t *testing.T) {
 		t.Fatalf("Len = %d expected 0", length)
 	}
 }
+
+// Ensure wrap around works
+func TestPopLen(t *testing.T) {
+	ring := must(New[frame, int64](10))
+	for i := range 15 {
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+
+	for i := range ring.Len() {
+		_, err := ring.Pop()
+		if err != nil {
+			t.Fatalf("Pop failed #%d with %e", i, err)
+		}
+	}
+
+	if length := ring.Len(); length != 0 {
+		t.Fatalf("Len = %d expected 0", length)
+	}
+}
+
 
 func TestLandlord(t *testing.T) {
 	ring := must(New[frame, int64](3))
