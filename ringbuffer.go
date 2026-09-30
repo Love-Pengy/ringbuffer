@@ -114,20 +114,19 @@ func (r *RingBuffer[T, C]) Push(v T) (evicted T, didEvict bool) {
 	return evicted, didEvict
 }
 
-
 // Pop item from ring buffer
 // Should the buffer be empty this will return the zero value of the type
 func (r *RingBuffer[T, C]) Pop() (T, error) {
-	r.ringLock.RLock()
-	defer r.ringLock.RUnlock()
+	r.ringLock.Lock()
+	defer r.ringLock.Unlock()
 
 	if r.count == 0 {
 		var nullValue T
 		return nullValue, errors.New("Ring buffer is empty")
 	}
-	
+
 	output := r.buf[r.tail]
-	r.tail++
+	r.tail = r.next(r.tail)
 	r.count--
 	return output, nil
 }
@@ -168,7 +167,7 @@ func (r *RingBuffer[T, C]) TrimLessThan(cutoff C) {
 	r.ringLock.Lock()
 	defer r.ringLock.Unlock()
 
-	for (r.count > 0) && (cmp.Less(r.buf[r.tail].GetCmpValue(), cutoff)) {
+	for (r.count > 0) && cmp.Less(r.buf[r.tail].GetCmpValue(), cutoff) {
 		r.tail = r.next(r.tail)
 		r.count--
 	}
@@ -176,22 +175,39 @@ func (r *RingBuffer[T, C]) TrimLessThan(cutoff C) {
 
 // Gets elements from the tail whose comparison value is less than the cutoff.
 // Element comparison stops when an element passes cutoff check
-func (r *RingBuffer[T, C]) GetLessThan(cutoff C) ([]T) {
+func (r *RingBuffer[T, C]) GetLessThan(cutoff C) []T {
 	r.ringLock.Lock()
 	defer r.ringLock.Unlock()
 
 	out := make([]T, 0)
-	for (r.count > 0) && (cmp.Less(r.buf[r.tail].GetCmpValue(), cutoff)) {
+	for (r.count > 0) && cmp.Less(r.buf[r.tail].GetCmpValue(), cutoff) {
 		out = append(out, r.buf[r.tail])
 		r.tail = r.next(r.tail)
 		r.count--
 	}
-	
+
 	if len(out) == 0 {
 		return nil
 	}
 
 	return out
+}
+
+// Get count of elements from the tail whose comparison value is less than the cutoff.
+// Element comparison stops when an element passes cutoff check
+func (r *RingBuffer[T, C]) GetLessThanCount(cutoff C) int {
+	r.ringLock.RLock()
+	defer r.ringLock.RUnlock()
+
+	outCount := 0
+	for i := range r.count {
+		if !cmp.Less(r.buf[(r.tail+i)%len(r.buf)].GetCmpValue(), cutoff) {
+			break
+		}
+		outCount++
+	}
+
+	return outCount
 }
 
 // Destroys elements from the tail whose comparison value is more than the cutoff.
@@ -200,7 +216,7 @@ func (r *RingBuffer[T, C]) TrimMoreThan(cutoff C) {
 	r.ringLock.Lock()
 	defer r.ringLock.Unlock()
 
-	for (r.count > 0) && (cmp.Less(cutoff, r.buf[r.tail].GetCmpValue())) {
+	for (r.count > 0) && cmp.Less(cutoff, r.buf[r.tail].GetCmpValue()) {
 		r.tail = r.next(r.tail)
 		r.count--
 	}
@@ -217,8 +233,10 @@ func (r *RingBuffer[T, C]) Reset() {
 }
 
 // TODO(BEF): This really shouldn't be the way to do this (expensive obv), but I'm still thinking
-//			  through how to prevent overwriting while the consumer is eating the this snapshot
-//			  window
+//
+//	through how to prevent overwriting while the consumer is eating the this snapshot
+//	window
+//
 // Returns a newly allocated slice containing a copy of all elements ordered from tail to head.
 // If no elements are availbale it will return nil
 func (r *RingBuffer[T, C]) Snapshot() []T {
@@ -229,7 +247,7 @@ func (r *RingBuffer[T, C]) Snapshot() []T {
 	for i := 0; i < r.count; i++ {
 		out = append(out, r.buf[(r.tail+i)%len(r.buf)])
 	}
-	
+
 	if len(out) == 0 {
 		return nil
 	}
@@ -240,8 +258,9 @@ func (r *RingBuffer[T, C]) Snapshot() []T {
 // Calls fn for every element from tail to head Stops at the point at which fn returns false.
 //
 // NOTE(BEF): There is a possibility that calling the fingbuffer functions within this function
-//			  will cause a deadlock. Instead do what you need within the function and do your
-//			  ringbuffer operations afterwards
+//
+//	will cause a deadlock. Instead do what you need within the function and do your
+//	ringbuffer operations afterwards
 func (r *RingBuffer[T, C]) ForEach(fn func(T) bool) {
 	r.ringLock.RLock()
 	defer r.ringLock.RUnlock()

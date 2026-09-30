@@ -132,9 +132,28 @@ func TestPopWithinBounds(t *testing.T) {
 	for i := range 3 {
 		value, err := ring.Pop()
 		if err != nil {
-			t.Fatalf("Pop failed #%d with %e", i, err)
+			t.Fatalf("Pop failed #%d with %v", i, err)
 		} else if value.val != i {
 			t.Fatalf("Pop #%d failed got %d expected %d", i, value.val, i)
+		}
+	}
+
+	if length := ring.Len(); length != 0 {
+		t.Fatalf("Len = %d expected 0", length)
+	}
+}
+
+// Ensure wrap around works
+func TestPopLen(t *testing.T) {
+	ring := must(New[frame, int64](10))
+	for i := range 15 {
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+
+	for i := range ring.Len() {
+		_, err := ring.Pop()
+		if err != nil {
+			t.Fatalf("Pop failed #%d with %e", i, err)
 		}
 	}
 
@@ -635,5 +654,82 @@ func waitWithTimeout(t *testing.T, done <-chan struct{}, d time.Duration) {
 	case <-done:
 	case <-time.After(d):
 		t.Fatal("timed out waiting for goroutines; possible deadlock")
+	}
+}
+
+func TestGetLessThanCount(t *testing.T) {
+	cases := []struct {
+		name   string
+		cap    int
+		ts     []int64 // timestamps pushed in order
+		cutoff int64
+		want   int
+	}{
+		{"empty buffer", 10, nil, 5, 0},
+		{"none less", 10, []int64{5, 6, 7}, 5, 0},
+		{"all less", 10, []int64{0, 1, 2}, 5, 3},
+		{"some less", 10, []int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, 5, 5},
+		{"cutoff is exclusive", 10, []int64{4, 5, 5, 6}, 5, 1},
+		{"stops at first passing element", 10, []int64{1, 2, 10, 3, 4}, 5, 2},
+		// cap 5 with 8 pushes evicts 0,1,2 and leaves 3..7 with the tail at index 3,
+		// so counting has to wrap from the end of the slice back to index 0.
+		{"wrapped buffer", 5, []int64{0, 1, 2, 3, 4, 5, 6, 7}, 7, 4},
+		{"wrapped buffer all less", 5, []int64{0, 1, 2, 3, 4, 5, 6, 7}, 100, 5},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ring := must(New[frame, int64](c.cap))
+			for i, ts := range c.ts {
+				_, _ = ring.Push(makeFrame(i, ts))
+			}
+
+			if got := ring.GetLessThanCount(c.cutoff); got != c.want {
+				t.Fatalf("GetLessThanCount(%d) = %d expected %d", c.cutoff, got, c.want)
+			}
+
+			// Should agree with GetLessThan, which walks the same elements.
+			if got := len(ring.GetLessThan(c.cutoff)); got != c.want {
+				t.Fatalf("len(GetLessThan(%d)) = %d expected %d", c.cutoff, got, c.want)
+			}
+		})
+	}
+}
+
+func TestGetLessThanCountDoesNotConsume(t *testing.T) {
+	ring := must(New[frame, int64](5))
+	for i := range 8 {
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+	before := ring.Snapshot()
+
+	for range 3 {
+		if got := ring.GetLessThanCount(6); got != 3 {
+			t.Fatalf("GetLessThanCount(6) = %d expected 3", got)
+		}
+	}
+
+	if length := ring.Len(); length != len(before) {
+		t.Fatalf("Len = %d expected %d", length, len(before))
+	}
+	if after := ring.Snapshot(); !slices.Equal(after, before) {
+		t.Fatalf("buffer changed: got %v expected %v", after, before)
+	}
+}
+
+func TestGetLessThanCountAfterPop(t *testing.T) {
+	ring := must(New[frame, int64](5))
+	for i := range 5 {
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+	for range 3 { // tail now at index 3
+		_, _ = ring.Pop()
+	}
+	for i := 5; i < 8; i++ { // head wraps; buffer holds 3..7
+		_, _ = ring.Push(makeFrame(i, int64(i)))
+	}
+
+	if got := ring.GetLessThanCount(6); got != 3 {
+		t.Fatalf("GetLessThanCount(6) = %d expected 3", got)
 	}
 }
